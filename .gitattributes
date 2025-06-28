@@ -1,0 +1,1 @@
+tycho2_star_catalog/catalog.dat filter=lfs diff=lfs merge=lfs -text
