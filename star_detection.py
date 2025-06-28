@@ -4,7 +4,7 @@ from scipy.ndimage import gaussian_filter, maximum_filter, label, center_of_mass
 import matplotlib.pyplot as plt
 
 
-def read_fits(fits_name):
+def read_fits(fits_path):
 
     #load in image data from fits file
     with fits.open(fits_path) as hdul:
@@ -95,7 +95,18 @@ def detect_stars(data, threshold=5.0, sigma=2.0, min_size=None, max_size=None):
 
     xy_coords = centroids[:, ::-1]  # (x, y) not (row, col)
 
-    return xy_coords
+    # Compute brightness (sum of pixel values within each star region)
+    brightness = []
+    for label_id in range(1, new_num + 1):
+        region_mask = (relabeled == label_id)
+        total_flux = data[region_mask].sum()
+        brightness.append(total_flux)
+
+    brightness = np.array(brightness)
+
+    result = np.column_stack((xy_coords, brightness))  # (x, y, brightness)
+
+    return result
 
 def plot_stars(data, detected_stars):
 
@@ -112,7 +123,7 @@ def plot_stars(data, detected_stars):
 if __name__ == '__main__':
 
     # example
-    fits_path='fits_data/bodes_cigar.fit'
+    fits_path='fits_data/soul_nebula.fits'
 
     data = read_fits(fits_path)
 
@@ -130,7 +141,7 @@ if __name__ == '__main__':
         max_size = int(10 * fwhm_pixels ** 2)
 
 
-    star_coords = detect_stars(background_subtracted, threshold=1, min_size=min_size, max_size=max_size)
+    star_coords = detect_stars(background_subtracted, threshold=0.5, min_size=min_size, max_size=max_size)
     print(star_coords)
 
     plot_stars(background_subtracted, star_coords)
