@@ -50,18 +50,27 @@ def load_catalog(catalog_file):
     return stars, mags
 
 
-def radec_to_cartesian(ra_deg, dec_deg):
+def radec_to_tangent_plane(ra_deg, dec_deg, ra_center_deg, dec_center_deg):
     """
-    Convert RA/Dec in degrees to 3D Cartesian unit vector (x, y, z).
+    Project RA/Dec (degrees) onto a tangent plane centered at (ra_center, dec_center).
+
+    Returns (x, y) in degrees on the tangent plane.
     """
-    ra_rad = np.deg2rad(ra_deg)
-    dec_rad = np.deg2rad(dec_deg)
+    ra = np.deg2rad(ra_deg)
+    dec = np.deg2rad(dec_deg)
+    ra0 = np.deg2rad(ra_center_deg)
+    dec0 = np.deg2rad(dec_center_deg)
 
-    x = np.cos(dec_rad) * np.cos(ra_rad)
-    y = np.cos(dec_rad) * np.sin(ra_rad)
-    z = np.sin(dec_rad)
+    cos_c = np.sin(dec0) * np.sin(dec) + np.cos(dec0) * np.cos(dec) * np.cos(ra - ra0)
 
-    return np.column_stack((x, y, z))
+    x = (np.cos(dec) * np.sin(ra - ra0)) / cos_c
+    y = (np.cos(dec0) * np.sin(dec) - np.sin(dec0) * np.cos(dec) * np.cos(ra - ra0)) / cos_c
+
+    # Convert radians to degrees
+    x_deg = np.rad2deg(x)
+    y_deg = np.rad2deg(y)
+
+    return x_deg, y_deg
 
 
 def filter_catalog_by_magnitude(catalog_array, magnitude_array, mag_limit):
@@ -74,8 +83,10 @@ def filter_catalog_by_magnitude(catalog_array, magnitude_array, mag_limit):
 def assign_tile(ra, dec, ra_bin_size=5, dec_bin_size=5):
     """
     Assign a star to an RA/Dec tile.
+    RA wraps at 360 degrees.
+    Dec runs from -90 to +90 degrees.
     """
-    ra_bin = int(np.floor(ra / ra_bin_size))
+    ra_bin = int(np.floor((ra % 360) / ra_bin_size))
     dec_bin = int(np.floor((dec + 90) / dec_bin_size))
     return (ra_bin, dec_bin)
 
@@ -202,10 +213,25 @@ if __name__ == '__main__':
             tile_stars = stars[star_indices]
             tile_mags = mags[star_indices]
 
-            tile_quads = generate_quads_from_tile(
-                tile_stars, tile_mags, max_stars=40, max_base_length=np.inf
+            # Calculate tile center in RA/Dec
+            ra_bin, dec_bin = tile_key
+            ra_center = (ra_bin + 0.5) * 5  # assuming ra_bin_size = 5
+            dec_center = (dec_bin + 0.5) * 5 - 90  # assuming dec_bin_size = 5
+
+            # Project RA/Dec to tangent plane (XY)
+            x, y = radec_to_tangent_plane(
+                tile_stars[:, 0], tile_stars[:, 1],
+                ra_center, dec_center
             )
+            tile_xy = np.column_stack((x, y))  # shape (N, 2)
+
+            # Generate quads using XY projected positions
+            tile_quads = generate_quads_from_tile(
+                tile_xy, tile_mags, max_stars=30, max_base_length=np.inf
+            )
+
             print(f"Tile {tile_key} → {len(tile_quads)} quads")
+
             save_tile_quad_index(output_folder, tile_key, tile_quads)
         # Create flag file indicating finished
         with open(flag_file, 'w') as f:
